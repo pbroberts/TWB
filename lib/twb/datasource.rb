@@ -22,7 +22,7 @@ module Twb
 
     @@hasher = Digest::SHA256.new
 
-    attr_reader :node, :name, :caption, :uiname, :connHash, :class, :connection, :tables
+    attr_reader :node, :name, :caption, :uiname, :connHash, :class, :connection, :tables, :localfields, :metadatafields
 
     def initialize dataSourceNode
       @node    = dataSourceNode
@@ -30,23 +30,31 @@ module Twb
       @caption = @node.attr('caption')
       @uiname  = if @caption.nil? || @caption == '' then @name else @caption end
       processConnection
+      processFields
       return self
     end
 
     def processConnection
-      @connHash    = ''
       @connection  = @node.at_xpath('./connection')
       unless @connection.nil?
         @class       = @connection.attribute('class').text
-        dsAttributes = @node.xpath('./connection/@*')
-        dsConnStr    = ''
-        dsAttributes.each do |attr|
-          dsConnStr += attr.text
-          # Note: '' attributes with value '' don't contribute to the hash
-        end
-        @connHash = Digest::MD5.hexdigest(dsConnStr)
+        setConnectionHash
         loadTables @connection
       end
+    end
+
+    # Notes:
+    #      - TODO: need to determine which, if any, of the connection attributes should be
+    #              included in the hash in order to identify it unambiguously - without
+    #              local values that obscure the data source's 'real' identity
+    #      - attributes with value '' don't contribute to the hash
+    def setConnectionHash
+      dsAttributes = @node.xpath('./connection/@*')
+      dsConnStr    = ''
+      dsAttributes.each do |attr|
+        dsConnStr += attr.text
+      end
+      @connHash = Digest::MD5.hexdigest(dsConnStr)
     end
 
     def loadTables connection
@@ -59,6 +67,27 @@ module Twb
 
     def Parameters?
       @name == 'Parameters'
+    end
+
+    def processFields
+      # --
+      @localfields    = {}
+      nodes = @node.xpath(".//column")
+      nodes.each do |node|
+        field = Twb::LocalField.new(node)
+        @localfields[field.name] = field
+      end
+      # --
+      @metadatafields = {}
+      nodes = @node.xpath("./connection/metadata-records/metadata-record")
+      nodes.each do |node|
+        field = Twb::MetadataField.new(node)
+        @metadatafields[field.name] = field
+      end
+    end
+
+    def field name
+      field = if localfields[name].nil? then metadatafields[name] end
     end
 
   end

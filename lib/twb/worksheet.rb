@@ -18,11 +18,21 @@ require 'digest/md5'
 
 module Twb
 
+  class WorksheetDataSource
+    attr_reader :node, :name, :caption, :uiname
+    def initialize node
+      @node   = node
+      @caption = node.attr('caption')
+      @name    = node.attr('name')
+      @uiname  = if @caption.nil? || @caption == '' then @name else @caption end
+    end
+  end
+
   class Worksheet
 
     @@hasher = Digest::SHA256.new
 
-    attr_reader :node, :name, :datasourcenames
+    attr_reader :node, :name, :datasourcenames, :datasources
 
     def initialize sheetNode
       @node    = sheetNode
@@ -32,11 +42,20 @@ module Twb
     end
 
     def loadDataSourceNames
-      @datasourcenames = []
+      @datasources = {}
       dsNodes = @node.xpath('.//datasource')
       dsNodes.each do |dsn|
-        @datasourcenames.push dsn.attr('name')
+        ds = WorksheetDataSource.new dsn
+        @datasources[ds.name] = ds
       end
+    end
+
+    def datasources
+      @datasources.values
+    end
+
+    def datasourcenames
+      @datasources.keys
     end
 
   end

@@ -24,28 +24,30 @@ module Twb
 
     attr_reader :name, :dir, :modtime, :version, :build, :ndoc, :datasources, :dashboards, :storyboards, :worksheets
 
-    # Creates a Workbook, from it's file name.
+    # Creates a Workbook, from its file name.
     #
     # == Parameters:
     # twbWithDir
     #   The Workbook's file name
     #
     def initialize twbWithDir
-      file     = File.new(twbWithDir)
       @name    = File.basename(twbWithDir)
       @dir     = File.dirname(File.expand_path(twbWithDir))
       @modtime = File.new(twbWithDir).mtime
-      @ndoc = Nokogiri::XML(open(twbWithDir))
+      @ndoc    = Nokogiri::XML(open(twbWithDir))
+      @wbnode  = @ndoc.at_xpath('//workbook')
       @version = @ndoc.xpath('/workbook/@version')
       @build   = @ndoc.xpath('/workbook/comment()').text.gsub(/^[^0-9]+/,'').strip
       loaddatasources
       loadWorksheets
       loadDashboards
       loadStoryboards
+      loadWindows
       return true
     end
 
     def loaddatasources
+      @dataSources = @ndoc.at_xpath('//workbook/datasources')
       @datasources = {}
       @datasourceNodes = @ndoc.xpath('//workbook/datasources/datasource').to_a
       @datasourceNodes.each do |node|
@@ -65,6 +67,7 @@ module Twb
     end
 
     def loadDashboards
+      @dashesNode = @ndoc.at_xpath('//workbook/dashboards')
       @dashboards = {}
       dashes = @ndoc.xpath('//workbook/dashboards/dashboard' ).to_a
       dashes.each do |node|
@@ -81,6 +84,16 @@ module Twb
       boards.each do |node|
         sheet = Twb::Storyboard.new(node)
         @storyboards[sheet.name] = sheet
+      end
+    end
+
+    def loadWindows
+      @windowsnode = @ndoc.at_xpath("//workbook/windows")
+      @windows = {}
+      windows  = @ndoc.xpath("//workbook/windows/window[@name]")
+      windows.each do |node|
+        window = Twb::Window.new(node)
+        @windows[window.name] = window
       end
     end
 
@@ -101,7 +114,6 @@ module Twb
       @worksheets.values
     end
 
-
     def datasourceNames
       @datasources.keys
     end
@@ -118,7 +130,6 @@ module Twb
       @worksheets.keys
     end
 
-
     def datasource name
       @datasources[name]
     end
@@ -133,6 +144,67 @@ module Twb
 
     def worksheet name
       @worksheets[name]
+    end
+    
+    # Make sure that the TWB has a <dashboards> node.
+    # It's possible for a TWB to have no dashboards, and therefore no <dashboards> node.
+    def ensureDashboardsNodeExists
+      if @dashesNode.nil?
+        @dashesNode = Nokogiri::XML::Node.new "dashboards", @ndoc
+        @dataSources.add_next_sibling(@dashesNode)
+      end
+    end
+
+    def ensureWindowsNodeExists
+      if @windowsnode.nil?
+        @windowsnode = Nokogiri::XML::Node.new "windows", @ndoc
+        @dataSources.add_next_sibling(@windowsnode)
+      end
+    end
+
+    # Add a new Documentation Dashboard to the TWB.
+    # Ensure that the TWB has a <dashboards> node (it may not).
+    # Make sure that the new Doc Dashboard's name doesn't conflict with an existing Dashboard - increment the incoming name if necessary.
+    # Add Doc Dashboard's <dashboard> and <window> nodes to the TWB; there's always a <windows> node in the TWB.
+    def addDocDashboard docDashboard
+      ensureDashboardsNodeExists
+      ensureWindowsNodeExists
+      title = getNewDashboardTitle(docDashboard.title)
+      docDashboard.title=(title) unless title == docDashboard.title
+      @dashesNode.add_child(docDashboard.dashnode)
+      @windowsnode.add_child(docDashboard.winnode)     
+    end
+ 
+    def getNewDashboardTitle(t)
+      title = t
+      if @datasources.include?(title)
+        inc = 0
+        loop do
+          inc+=1
+          title = t + ' ' + inc.to_s
+          if !@datasources.include?(title)
+            break
+          end
+        end
+      end
+      return title
+    end
+
+    # Write the TWB to a file, with an optional name.
+    # Can be used to write over the existing TWB (dangerous), or to a new file (preferred).
+    def write(name=@name)
+      $f = File.open(name,'w')
+      if $f
+          $f.puts @ndoc
+          $f.close
+      end
+    end
+   
+    # Write the TWB to a file, appending the base name with the provided string.
+    # Intended for use when making adjustments to the TWB without overwriting the original.
+    def writeAppend(str)
+      newName = @name.sub(/[.]twb$/,'') + str.gsub(/^[.]*/,'.') + '.twb'
+      write newName
     end
 
   end
