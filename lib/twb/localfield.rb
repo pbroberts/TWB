@@ -21,7 +21,7 @@ module Twb
 
   class LocalField
 
-    attr_reader :type, :node, :name, :datatype, :role, :type, :hidden, :caption, :aggregation, :uiname
+    attr_reader :type, :node, :name, :datatype, :role, :type, :hidden, :caption, :aggregation, :uiname, :calculation
 
     def initialize fieldNode
       @node        = fieldNode
@@ -33,8 +33,13 @@ module Twb
       @hidden      = @node.attr('hidden')
       @caption     = @node.attr('caption')
       @aggregation = @node.attr('aggregation')
+      @calculation = getCalculation(node)
       @uiname      = if @caption.nil? || @caption == '' then @name else @caption end
       return self
+    end
+    
+    def getCalculation node
+      FieldCalculation.new(node.at_xpath("./calculation"))
     end
 
   end

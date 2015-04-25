@@ -22,7 +22,7 @@ module Twb
 
     @@hasher = Digest::SHA256.new
 
-    attr_reader :node, :name, :worksheets
+    attr_reader :node, :name, :sheets
 
     def initialize node
       # puts "initialize Storyboard"
